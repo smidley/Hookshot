@@ -21,6 +21,7 @@
 volatile LONG64 hos_present_count;   /* (nvn_native.c: the game's presents) */
 static HWND hwnd;
 static int renderer;   /* the renderer presents into the window */
+int rx_option(int id, int otherwise);   /* (rx_backend.c: the Insert menu's choices) */
 
 /* mouse capture: raw motion accumulated here, taken by nn_hid.c */
 static volatile LONG mouse_dx, mouse_dy;
@@ -93,7 +94,8 @@ static void mouse_capture(HWND w, int on) {
 
 static LRESULT CALLBACK wndproc(HWND w, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
-    case WM_TIMER:
+    case WM_TIMER:   /* (the Insert menu's Fullscreen, which F11 flips there too: the window follows it) */
+        set_fullscreen(w, rx_option(5, fullscreen));
         return 0;
     case WM_INPUT: {
         RAWINPUT ri;
@@ -110,7 +112,8 @@ static LRESULT CALLBACK wndproc(HWND w, UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
     case WM_KEYDOWN:
         if (wp == VK_ESCAPE) mouse_capture(w, 0);
-        if (wp == VK_F11 && !(lp & (1 << 30))) set_fullscreen(w, !fullscreen);
+        /* (with the Vulkan renderer F11 is the Insert menu's, so its Fullscreen row and the ini keep it: WM_TIMER) */
+        if (wp == VK_F11 && !(lp & (1 << 30)) && rx_option(5, -1) < 0) set_fullscreen(w, !fullscreen);
         return 0;
     case WM_DPICHANGED:
         if (!fullscreen) {
@@ -198,6 +201,7 @@ static DWORD WINAPI display_main(void *p) {
     RegisterRawInputDevices(&rid, 1, sizeof rid);
     renderer = rx_start(hwnd);
     if (!renderer) hos_log("display: no WebGPU device: the window stays black");
+    set_fullscreen(hwnd, rx_option(5, fullscreen));   /* (the saved choice at once, not a frame of the window first) */
     SetTimer(hwnd, 1, 250, NULL);
     MSG m;
     while (GetMessageA(&m, NULL, 0, 0) > 0) {

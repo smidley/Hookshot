@@ -117,8 +117,8 @@ Never send game files.
 
 ## In-game menu
 
-Press <kbd>Insert</kbd> in game. Everything is off by default, and your choices are saved in `hookshot_options.ini`
-beside the game.
+Press <kbd>Insert</kbd> in game, or <kbd>&#96;</kbd> on a keyboard without Insert (Apple's, for one). Everything is
+off by default, and your choices are saved in `hookshot_options.ini` beside the game.
 
 | Option | Choices |
 |---|---|
@@ -130,7 +130,9 @@ beside the game.
 | Game speed | Per frame, Real time |
 | Handheld profile | Off, On |
 | Ultrawide | 16:9, Monitor's shape |
+| Fullscreen | Off, On (<kbd>F11</kbd> also switches it) |
 | FPS counter | Off, On |
+| Volume | 0 to 100% |
 
 With Game speed on Per frame, the game runs slower whenever it is below 60 fps. Real time keeps it at normal speed.
 

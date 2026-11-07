@@ -1,6 +1,7 @@
 // The Insert menu. Drawn on the CPU (GDI text into a bitmap) and copied over the window's image at the last step of a present,
 // so it costs nothing while closed and it never touches the game's picture, nor what frame interpolation sees. Keys: Insert
-// opens and closes it, Up and Down choose, Left and Right change, Esc closes; the game gets no keyboard input while it is open.
+// or ` (keyboards without Insert, Apple's) opens and closes it, Up and Down choose, Left and Right change, Esc closes; the
+// game gets no keyboard input while it is open. F11 flips Fullscreen whether it is open or not.
 #include <atomic>
 #include <chrono>
 #include <cstdio>
@@ -54,7 +55,9 @@ Row rows[] = {
     {"Game speed", &opts.realtime, 0, 1, 1, tx_speed},
     {"Handheld profile", &opts.handheld, 0, 1, 1, tx_handheld},
     {"Ultrawide", &opts.ultrawide, 0, 1, 1, tx_ultrawide},
+    {"Fullscreen", &opts.fullscreen, 0, 1, 1, tx_onoff},
     {"FPS counter", &opts.show_fps, 0, 1, 1, tx_onoff},
+    {"Volume", &opts.volume, 0, 100, 10, tx_percent},
 };
 constexpr int kRows = sizeof rows / sizeof rows[0];
 
@@ -174,7 +177,7 @@ void paint_menu(HDC dc, uint32_t w, uint32_t h, int s) {
         TextOutA(dc, (int)w - 16 * s - sz.cx, y + 4 * s, v, (int)strlen(v));
     }
     SetTextColor(dc, RGB(140, 150, 144));
-    const char* hint = "Arrows change   Insert closes";
+    const char* hint = "Arrows change   Insert or ` closes";
     TextOutA(dc, 16 * s, top + kRows * rh + 6 * s, hint, (int)strlen(hint));
     SelectObject(dc, old);
     DeleteObject(title);
@@ -281,6 +284,7 @@ void menu_init() {
     if (const char* e = getenv("RX_VK_UPSCALE")) opts.upscale = atoi(e);
     if (const char* e = getenv("HOS_REALTIME_STEP")) opts.realtime = atoi(e) != 0;
     if (const char* e = getenv("HOS_DYNRES")) opts.resolution = atoi(e) != 0 ? 0 : 1;
+    if (const char* e = getenv("HOS_FULLSCREEN")) opts.fullscreen = atoi(e) != 0;
 }
 
 bool menu_is_open() { return open_now.load(std::memory_order_relaxed); }
@@ -291,14 +295,14 @@ void menu_note_frame(bool game_frame) {
 }
 
 void menu_tick() {
-    static bool held[6];
-    static const int keys[6] = {VK_INSERT, VK_UP, VK_DOWN, VK_LEFT, VK_RIGHT, VK_ESCAPE};
+    static bool held[8];
+    static const int keys[8] = {VK_INSERT, VK_UP, VK_DOWN, VK_LEFT, VK_RIGHT, VK_ESCAPE, VK_OEM_3, VK_F11};
     HWND fg = GetForegroundWindow();
     DWORD pid = 0;
     if (fg) GetWindowThreadProcessId(fg, &pid);
     const bool mine = pid == GetCurrentProcessId();
-    bool press[6] = {};
-    for (int i = 0; i < 6; i++) {
+    bool press[8] = {};
+    for (int i = 0; i < 8; i++) {
         const bool down = mine && (GetAsyncKeyState(keys[i]) & 0x8000) != 0;
         press[i] = down && !held[i];
         held[i] = down;
@@ -306,7 +310,8 @@ void menu_tick() {
     const int scale = scale_of(dev.swap_extent.height);
     bool changed = scale != cur_scale;
     cur_scale = scale;
-    if (press[0]) open_now = !open_now.load(), changed = true;
+    if (press[0] || press[6]) open_now = !open_now.load(), changed = true;
+    if (press[7]) opts.fullscreen = !opts.fullscreen, changed = true, save();   // (the window follows within 250 ms: host/display.c)
     if (open_now.load()) {
         if (press[5]) open_now = false;
         if (press[1]) selected = (selected + kRows - 1) % kRows, changed = true;
