@@ -550,6 +550,16 @@ static void render_frame(int16_t *pcm) {   /* 240 stereo frames */
             l[i] *= lim_in * lim_env * lim_out;
             r[i] *= lim_in * lim_env * lim_out;
         }
+    {   /* the Insert menu's Volume, squared (50% sounds about half as loud), ramped over the frame as the voices are (a jump clicks) */
+        int rx_option(int id, int otherwise);
+        static float was = 1.0f;
+        const float v = rx_option(4, 100) / 100.0f, g = v * v, dg = (g - was) / FRAME;
+        for (int i = 0; i < FRAME; i++) {
+            l[i] *= was + dg * (float)(i + 1);
+            r[i] *= was + dg * (float)(i + 1);
+        }
+        was = g;
+    }
     for (int i = 0; i < FRAME; i++) {
         float a = l[i] * 32767.0f, b = r[i] * 32767.0f;
         if (a != a) a = 0;   /* (NaN) */

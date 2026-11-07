@@ -1,6 +1,7 @@
 // The Insert menu. Drawn on the CPU (GDI text into a bitmap) and copied over the window's image at the last step of a present,
 // so it costs nothing while closed and it never touches the game's picture, nor what frame interpolation sees. Keys: Insert
-// opens and closes it, Up and Down choose, Left and Right change, Esc closes; the game gets no keyboard input while it is open.
+// (or F1 or `, on keyboards without Insert) opens and closes it, Up and Down choose, Left and Right change, Esc closes; the
+// game gets no keyboard input while it is open.
 #include <atomic>
 #include <chrono>
 #include <cstdio>
@@ -75,6 +76,8 @@ Row rows[] = {
      "Monitor's shape widens the camera to fill a screen wider than 16:9. The HUD is still stretched. Applies after a restart."},
     {"FPS counter", &opts.show_fps, 0, 1, 1, tx_onoff,
      "Shows frames per second in the top right corner. With frame generation on, it also shows the game's own rate."},
+    {"Volume", &opts.volume, 0, 100, 10, tx_percent,
+     "How loud the game is: music, voices and sounds together. 50% sounds about half as loud."},
 };
 constexpr int kRows = sizeof rows / sizeof rows[0];
 constexpr int kMenuWidth = 360;   // (at a scale of 1: 720 lines)
@@ -247,7 +250,7 @@ void paint_menu(HDC dc, uint32_t w, uint32_t h, int s) {
     wrap_help(dc, rows[selected].help, (int)w - 32 * s, 16 * s, help_top + 4 * s, true);
     SelectObject(dc, body);
     SetTextColor(dc, RGB(140, 150, 144));
-    const char* hint = "Arrows change   Insert or F1 closes";
+    const char* hint = "Arrows change   Insert, F1 or ` closes";
     TextOutA(dc, 16 * s, help_top + 4 * s + help_px + 10 * s, hint, (int)strlen(hint));
     SelectObject(dc, old);
     DeleteObject(title);
@@ -427,14 +430,14 @@ bool fps_take(int64_t now, int64_t shown, int64_t game, int64_t* next, int64_t* 
 
 void menu_tick() {
     fullscreen_tick();
-    static bool held[7];
-    static const int keys[7] = {VK_INSERT, VK_UP, VK_DOWN, VK_LEFT, VK_RIGHT, VK_ESCAPE, VK_F1};   // (F1: for keyboards without Insert)
+    static bool held[8];
+    static const int keys[8] = {VK_INSERT, VK_UP, VK_DOWN, VK_LEFT, VK_RIGHT, VK_ESCAPE, VK_F1, VK_OEM_3};   // (F1 and `: for keyboards without Insert)
     HWND fg = GetForegroundWindow();
     DWORD pid = 0;
     if (fg) GetWindowThreadProcessId(fg, &pid);
     const bool mine = pid == GetCurrentProcessId();
-    bool press[7] = {};
-    for (int i = 0; i < 7; i++) {
+    bool press[8] = {};
+    for (int i = 0; i < 8; i++) {
         const bool down = mine && (GetAsyncKeyState(keys[i]) & 0x8000) != 0;
         press[i] = down && !held[i];
         held[i] = down;
@@ -443,7 +446,7 @@ void menu_tick() {
     bool changed = scale != cur_scale || menu_refresh;
     menu_refresh = false;
     cur_scale = scale;
-    if (press[0] || press[6]) open_now = !open_now.load(), changed = true;
+    if (press[0] || press[6] || press[7]) open_now = !open_now.load(), changed = true;
     if (open_now.load()) {
         if (press[5]) open_now = false;
         if (press[1]) selected = (selected + kRows - 1) % kRows, changed = true;
