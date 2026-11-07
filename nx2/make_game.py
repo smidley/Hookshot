@@ -14,6 +14,7 @@ data ever comes with the tools. Lines the app reads, each on its own line of std
     @@error <text>           stopped
 """
 import argparse
+import hashlib
 import os
 import re
 import shutil
@@ -168,6 +169,39 @@ def link_or_copy(src, dst):
             say("progress", "%.3f" % (i / max(1, len(files))))
 
 
+def lift_key(exefs, env):
+    """What the translation is made from: the game's modules, the translator, its lists and its A64_* settings (Hookshot issue 21).
+    The same key, the same lifted C: an update that changed none of it (host/, gpu/, the builder, nup.py) compiles the last lift"""
+    import capstone
+    h = hashlib.sha1(("hookshot lift 1, python %s, capstone %s" % (sys.version, getattr(capstone, "__version__", ""))).encode())
+
+    def add(name, path):
+        h.update(b"\0" + name.encode() + b"\0")
+        with open(path, "rb") as f:
+            h.update(f.read())
+
+    not_lift = {"make_game.py", "nup.py", "unpack.py", "zbic.py", "shader_census.py"}   # (the read and finish steps': the lift imports none)
+    for top in (HERE, os.path.join(ROOT, "third_party", "a64-kit")):
+        for d, dirs, files in os.walk(top):
+            dirs[:] = sorted(x for x in dirs if x != "__pycache__")
+            for f in sorted(files):
+                if d == HERE and (f in not_lift or f.startswith("test_")) or f.endswith((".pyc", ".dll", ".so", ".sha1")):
+                    continue
+                add(os.path.relpath(os.path.join(d, f), ROOT).replace(os.sep, "/"), os.path.join(d, f))
+    for f in sorted(os.listdir(exefs)):
+        if os.path.isfile(os.path.join(exefs, f)):
+            add("exefs/" + f, os.path.join(exefs, f))
+    for rel in ("hot_funcs.txt", "image/chunks.txt"):   # (as shipped: the lift writes its own chunks.txt into the work folder)
+        if os.path.exists(os.path.join(ROOT, "work", rel)):
+            add("work/" + rel, os.path.join(ROOT, "work", rel))
+    merged = dict(os.environ, **env)
+    for k in sorted(k for k in merged if k.upper().startswith("A64_")):
+        h.update(("\0%s=%s" % (k, merged[k])).encode())
+        if os.path.isfile(merged[k]):
+            add(k, merged[k])
+    return h.hexdigest()
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     p.add_argument("--nup")
@@ -201,7 +235,8 @@ def main():
         shutil.rmtree(game, ignore_errors=True)
         if not os.path.exists(good):
             shutil.rmtree(romfs, ignore_errors=True)
-        run(PY + ["nx2/nup.py", a.nup, "--extract", game])
+        # (its data kept from this builder's last unpack: the game's code alone, not 26 GB unpacked to be thrown away)
+        run(PY + ["nx2/nup.py", a.nup, "--extract", game] + (["--only", "exefs"] if os.path.isdir(romfs) else []))
         shutil.move(os.path.join(game, "exefs"), exefs)
         if not os.path.isdir(romfs):
             shutil.move(os.path.join(game, "romfs"), romfs)
@@ -233,8 +268,19 @@ def main():
         env["RX_PGO"] = os.path.join(work, "hookshot_pieces.prof")
 
     say("stage", "lift", "Translating the game to PC code")
-    run(PY + ["nx2/lift.py", "--standalone", "--write", "--exefs", exefs, "--work", work], env)
-    run(PY + ["nx2/split_hot.py", os.path.join(work, "sa", "gen")], env)   # (eight files side by side: ~6 minutes, not 79)
+    gen, stamp = os.path.join(work, "sa", "gen"), os.path.join(work, "sa", "lift.sha1")
+    key = lift_key(exefs, env)
+    if (os.path.exists(stamp) and open(stamp).read() == key and os.path.isdir(gen)
+            and os.path.exists(os.path.join(work, "sa", "image", "image.bin"))):
+        # (Hookshot issue 21: the compile below then takes only what changed, the rest from its object cache)
+        print("the game's code is translated as the last build left it: the game files and the translator are unchanged", flush=True)
+    else:
+        if os.path.exists(stamp):
+            os.remove(stamp)   # (written again only after both steps: a lift cut short is never kept)
+        run(PY + ["nx2/lift.py", "--standalone", "--write", "--exefs", exefs, "--work", work], env)
+        run(PY + ["nx2/split_hot.py", gen], env)   # (eight files side by side: ~6 minutes, not 79)
+        with open(stamp, "w") as f:
+            f.write(key)
 
     say("stage", "compile", "Compiling")
     done = {"n": 0, "of": 1}
